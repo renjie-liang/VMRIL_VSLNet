@@ -1,0 +1,1 @@
+python main_t7_tacos.py  --suffix weak30_6merge_iou10_best_re2 --checkpoint ./ckpt_t7/vslnet_tacos_new_128_rnn_weak30_6merge_iou10_best_re0/model/best_ckpt.t7

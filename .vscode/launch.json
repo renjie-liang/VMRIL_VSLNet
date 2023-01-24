@@ -1,0 +1,21 @@
+{
+    // Use IntelliSense to learn about possible attributes.
+    // Hover to view descriptions of existing attributes.
+    // For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Python: Current File",
+            "type": "python",
+            "request": "launch",
+            "program": "${file}",
+            "console": "integratedTerminal",
+            "justMyCode": true,
+            "args": ["--in_file", "./datasets_t7/tacos_new_128_weak30.pkl",
+                     "--out_file", "./data/dataset/tacos_test/train.json", 
+                     "--checkpoint", "./ckpt_t7/vslnet_tacos_new_128_rnn_weak30_6merge_iou10_best_re0/model/best_ckpt.t7", 
+                     "--iou", "10",
+            ],
+        }
+    ]
+}
