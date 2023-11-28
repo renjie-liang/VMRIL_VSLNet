@@ -7,14 +7,13 @@ from model.VSLNet_t7 import VSLNet, build_optimizer_and_scheduler
 from util.data_util import load_video_features, save_json, load_json
 from util.data_gen import gen_or_load_dataset
 from util.data_loader_t7 import get_train_loader, get_test_loader
-from util.runner_utils_t7 import set_th_config, convert_length_to_mask, eval_test, filter_checkpoints, \
+from util.runner_utils_t7 import set_th_config, convert_length_to_mask, eval_test, eval_test_save, filter_checkpoints, \
     get_last_checkpoint
 from datetime import datetime
 parser = argparse.ArgumentParser()
 # data parameters
-parser.add_argument('--save_dir', type=str, default='datasets_t7', help='path to save processed dataset')
+parser.add_argument('--save_dir', type=str, default='datapkl', help='path to save processed dataset')
 parser.add_argument('--task', type=str, default='tacos', help='target task')
-parser.add_argument('--fv', type=str, default='new', help='[new | org] for visual features')
 parser.add_argument('--max_pos_len', type=int, default=128, help='maximal position sequence length allowed')
 # model parameters
 parser.add_argument("--word_size", type=int, default=None, help="number of words")
@@ -31,32 +30,42 @@ parser.add_argument('--predictor', type=str, default='rnn', help='[rnn | transfo
 parser.add_argument("--gpu_idx", type=str, default="0", help="GPU index")
 parser.add_argument("--seed", type=int, default=12345, help="random seed")
 parser.add_argument("--mode", type=str, default="train", help="[train | test]")
-parser.add_argument("--epochs", type=int, default=5, help="number of epochs")
-parser.add_argument("--batch_size", type=int, default=16, help="batch size")
+parser.add_argument("--epochs", type=int, default=50, help="number of epochs")
+parser.add_argument("--batch_size", type=int, default=64, help="batch size")
 parser.add_argument("--num_train_steps", type=int, default=None, help="number of training steps")
-parser.add_argument("--init_lr", type=float, default=0.0001, help="initial learning rate")
+parser.add_argument("--init_lr", type=float, default=0.0002, help="initial learning rate")
 parser.add_argument("--clip_norm", type=float, default=1.0, help="gradient clip norm")
 parser.add_argument("--warmup_proportion", type=float, default=0.0, help="warmup proportion")
 parser.add_argument("--extend", type=float, default=0.1, help="highlight region extension")
 parser.add_argument("--period", type=int, default=100, help="training loss print period")
-parser.add_argument('--model_dir', type=str, default='ckpt_t7', help='path to save trained model weights')
+parser.add_argument('--model_dir', type=str, default='ckpt', help='path to save trained model weights')
 parser.add_argument('--model_name', type=str, default='vslnet', help='model name')
-parser.add_argument('--suffix', type=str, default=None, help='set to the last `_xxx` in ckpt repo to eval results')
+parser.add_argument('--suffix', type=str, default="", help='set to the last `_xxx` in ckpt repo to eval results')
 parser.add_argument('--checkpoint', type=str, default=None)
 parser.add_argument('--ckpt_out', type=str, default=None)
 configs = parser.parse_args()
 
 # set tensorflow configs
 set_th_config(configs.seed)
+if configs.task == 'charades':
+    feature_dir = "/storage_fast/rjliang/charades/i3d_finetuned"
+elif  configs.task == 'anet':
+    feature_dir = "/storage_fast/rjliang/activitynet/i3d"
+elif  configs.task == 'tacos':
+    feature_dir = "/storage_fast/rjliang/tacos/i3d"     
+else:
+    raise
+configs.feature_dir = feature_dir
+configs.emb_path = "/storage_fast/rjliang/glove/glove.840B.300d.txt"
 
 # prepare or load dataset
 dataset = gen_or_load_dataset(configs)
 configs.char_size = dataset['n_chars']
 configs.word_size = dataset['n_words']
 
+
 # get train and test loader
-visual_features = load_video_features("/storage_fast/rjliang/tacos/c3d_1024", configs.max_pos_len)
-# visual_features = load_video_features(os.path.join('data', 'features', configs.task, configs.fv), configs.max_pos_len)
+visual_features = load_video_features(feature_dir, configs.max_pos_len)
 train_loader = get_train_loader(dataset=dataset['train_set'], video_features=visual_features, configs=configs)
 val_loader = None if dataset['val_set'] is None else get_test_loader(dataset['val_set'], visual_features, configs)
 test_loader = get_test_loader(dataset=dataset['test_set'], video_features=visual_features, configs=configs)
@@ -69,13 +78,10 @@ num_test_batches = len(test_loader)
 # Device configuration
 cuda_str = 'cuda' if configs.gpu_idx is None else 'cuda:{}'.format(configs.gpu_idx)
 device = torch.device(cuda_str if torch.cuda.is_available() else 'cpu')
-
+print(device)
 # create model dir
-home_dir = os.path.join(configs.model_dir, '_'.join([configs.model_name, configs.task, configs.fv,
-                                                     str(configs.max_pos_len), configs.predictor]))
-if configs.suffix is not None:
-    home_dir = home_dir + '_' + configs.suffix
-model_dir = os.path.join(home_dir, "model")
+home_dir = os.path.join(configs.model_dir, '_'.join([configs.task, str(configs.max_pos_len), configs.suffix]))
+model_dir = home_dir
 
 # train and test
 if configs.mode.lower() == 'train':
@@ -127,35 +133,30 @@ if configs.mode.lower() == 'train':
             if global_step % num_train_batches == 0:
                 model.eval()
 
-                head = "Epoch | Step | Rank@1, IoU=0.3 | Rank@1, IoU=0.5 | Rank@1, IoU=0.7 | mean IoU | \n"
-                score_writer.write(head)
+                # head = "Epoch | Step | Rank@1, IoU=0.3 | Rank@1, IoU=0.5 | Rank@1, IoU=0.7 | mean IoU | \n"
+                # score_writer.write(head)
 
-                score_writer.write("Train Score:")
-                r1i3, r1i5, r1i7, mi, score_str = eval_test(model=model, data_loader=train_test_loader, device=device,
-                                                            mode='train scores', epoch=epoch + 1, global_step=global_step)
-                print('\nEpoch: %2d | Step: %5d | r1i3: %.2f | r1i5: %.2f | r1i7: %.2f | mIoU: %.2f' % (epoch + 1, global_step, r1i3, r1i5, r1i7, mi), flush=True)
-                score_writer.write(score_str)
-                score_writer.flush()
+                # score_writer.write("Train Score:")
+                # r1i3, r1i5, r1i7, mi, score_str = eval_test(model=model, data_loader=train_test_loader, device=device,
+                #                                             mode='train scores', epoch=epoch + 1, global_step=global_step)
+                # print('\nEpoch: %2d | Step: %5d | r1i3: %.2f | r1i5: %.2f | r1i7: %.2f | mIoU: %.2f' % (epoch + 1, global_step, r1i3, r1i5, r1i7, mi), flush=True)
+                # score_writer.write(score_str)
+                # score_writer.flush()
 
 
-                score_writer.write("Val Score:")
-                r1i3, r1i5, r1i7, mi, score_str = eval_test(model=model, data_loader=val_loader, device=device,
-                                                            mode='val scores', epoch=epoch + 1, global_step=global_step)
+                score_writer.write("Test Score: \t")
+                r1i3, r1i5, r1i7, mi, score_str = eval_test(model=model, data_loader=test_loader, device=device,
+                                                            mode='Test Score', epoch=epoch + 1, global_step=global_step)
                 print('\nEpoch: %2d | Step: %5d | r1i3: %.2f | r1i5: %.2f | r1i7: %.2f | mIoU: %.2f' % (epoch + 1, global_step, r1i3, r1i5, r1i7, mi), flush=True)
                 score_writer.write(score_str)
                 score_writer.flush()
                 if mi > mi_val_best:
                     mi_val_best = mi
                     model.eval()
-                    torch.save(model.state_dict(), os.path.join(model_dir, 'best_ckpt.t7'.format(str(epoch + 1))))
-                    score_writer.write("Save Best Epoch {}".format(epoch+1))
-
-                score_writer.write("Test Score:")
-                r1i3, r1i5, r1i7, mi, score_str = eval_test(model=model, data_loader=test_loader, device=device,
-                                                            mode='test', epoch=epoch + 1, global_step=global_step)
-                print('\nEpoch: %2d | Step: %5d | r1i3: %.2f | r1i5: %.2f | r1i7: %.2f | mIoU: %.2f' % (epoch + 1, global_step, r1i3, r1i5, r1i7, mi), flush=True)
-                score_writer.write(score_str)
-                score_writer.flush()
+                    torch.save(model.state_dict(), os.path.join(model_dir, 'best_ckpt.t7'))
+                    # score_writer.write("Save Best Epoch {}".format(epoch+1))
+                    with open(model_dir+"/bestepoch", "w") as f:
+                        f.write("{}".format(epoch+1))
                 model.train()
 
 
@@ -181,3 +182,17 @@ elif configs.mode.lower() == 'test':
     print("\x1b[1;31m" + "Rank@1, IoU=0.5:\t{:.2f}".format(r1i5) + "\x1b[0m", flush=True)
     print("\x1b[1;31m" + "Rank@1, IoU=0.7:\t{:.2f}".format(r1i7) + "\x1b[0m", flush=True)
     print("\x1b[1;31m" + "{}:\t{:.2f}".format("mean IoU".ljust(15), mi) + "\x1b[0m", flush=True)
+
+
+
+elif configs.mode.lower() == 'test_save':
+    if not os.path.exists(model_dir):
+        raise ValueError('No pre-trained weights exist')
+    pre_configs = load_json(os.path.join(model_dir, "configs.json"))
+    parser.set_defaults(**pre_configs)
+    configs = parser.parse_args()
+    model = VSLNet(configs=configs, word_vectors=dataset['word_vector']).to(device)
+    configs.checkpoint = os.path.join(model_dir, 'best_ckpt.t7')
+    model.load_state_dict(torch.load(configs.checkpoint))
+    model.eval()
+    eval_test_save(model=model, data_loader=train_test_loader, device=device, configs=configs)

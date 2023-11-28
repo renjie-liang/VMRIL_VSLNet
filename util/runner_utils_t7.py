@@ -7,7 +7,7 @@ import torch.utils.data
 import torch.backends.cudnn
 from tqdm import tqdm
 from util.data_util import index_to_time
-
+import pickle
 
 def set_th_config(seed):
     random.seed(seed)
@@ -96,6 +96,48 @@ def eval_test(model, data_loader, device, mode='test', epoch=None, global_step=N
     r1i7 = calculate_iou_accuracy(ious, threshold=0.7)
     mi = np.mean(ious) * 100.0
     # write the scores
-    score_str = "Epoch {}, Step {}:\n".format(epoch, global_step)
+    score_str = "Epoch {}, Step {}: \t".format(epoch, global_step)
     score_str += "{:.2f}\t {:.2f}\t {:.2f}\t {:.2f}\n".format(r1i3, r1i5, r1i7, mi)
     return r1i3, r1i5, r1i7, mi, score_str
+
+
+
+def eval_test_save(model, data_loader, device, configs):
+    ious = []
+    save_list = []
+
+    with torch.no_grad():
+        for idx, (records, vfeats, vfeat_lens, word_ids, char_ids) in tqdm(
+                enumerate(data_loader), total=len(data_loader)):
+            # prepare features
+            vfeats, vfeat_lens = vfeats.to(device), vfeat_lens.to(device)
+            word_ids, char_ids = word_ids.to(device), char_ids.to(device)
+            # generate mask
+            query_mask = (torch.zeros_like(word_ids) != word_ids).float().to(device)
+            video_mask = convert_length_to_mask(vfeat_lens).to(device)
+            # compute predicted results
+            _, start_logits, end_logits = model(word_ids, char_ids, vfeats, video_mask, query_mask)
+            start_indices, end_indices = model.extract_index(start_logits, end_logits)
+            start_logits, end_logits = start_logits.cpu().numpy(), end_logits.cpu().numpy()
+            start_indices = start_indices.cpu().numpy()
+            end_indices = end_indices.cpu().numpy()
+            for i in range(len(records)):
+                record = records[i]
+                sidx = start_indices[i]
+                eidx = end_indices[i]
+                start_time, end_time = index_to_time(sidx, eidx, record["v_len"], record["duration"])
+                iou = calculate_iou(i0=[start_time, end_time], i1=[record["s_time"], record["e_time"]])
+                ious.append(iou)
+
+                tmp = {'vid': record["vid"], 
+                    'vlen': int(record["v_len"]),
+                    'prop_logits': [start_logits[i], end_logits[i]],
+                }
+
+                save_list.append(tmp)
+        
+        os.makedirs("./results/{}".format(configs.task), exist_ok=True)
+        outpath = "./results/{}/{}.pkl".format(configs.task, configs.suffix)
+        print(outpath)
+        with open(outpath, 'wb') as f:
+            pickle.dump(save_list, f)

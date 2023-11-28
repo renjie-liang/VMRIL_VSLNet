@@ -9,50 +9,9 @@ from util.data_util import load_json, load_lines, load_pickle, save_pickle, time
 PAD, UNK = "<PAD>", "<UNK>"
 
 
-# class CharadesProcessor:
-#     def __init__(self):
-#         super(CharadesProcessor, self).__init__()
-#         self.idx_counter = 0
-
-#     def reset_idx_counter(self):
-#         self.idx_counter = 0
-
-#     def process_data(self, data, charades, scope):
-#         results = []
-#         for line in tqdm(data, total=len(data), desc='process charades-sta {}'.format(scope)):
-#             line = line.lstrip().rstrip()
-#             if len(line) == 0:
-#                 continue
-#             video_info, sentence = line.split('##')
-#             vid, start_time, end_time = video_info.split(' ')
-#             duration = float(charades[vid]['duration'])
-#             start_time = max(0.0, float(start_time))
-#             end_time = min(float(end_time), duration)
-#             words = word_tokenize(sentence.strip().lower(), language="english")
-#             record = {'sample_id': self.idx_counter, 'vid': str(vid), 's_time': start_time, 'e_time': end_time,
-#                       'duration': duration, 'words': words}
-#             results.append(record)
-#             self.idx_counter += 1
-#         return results
-
-#     def convert(self, data_dir):
-#         self.reset_idx_counter()
-#         if not os.path.exists(data_dir):
-#             raise ValueError('data dir {} does not exist'.format(data_dir))
-#         # load raw data
-#         charades = load_json(os.path.join(data_dir, 'charades.json'))
-#         train_data = load_lines(os.path.join(data_dir, 'charades_sta_train.txt'))
-#         test_data = load_lines(os.path.join(data_dir, 'charades_sta_test.txt'))
-#         # process data
-#         train_set = self.process_data(train_data, charades, scope='train')
-#         test_set = self.process_data(test_data, charades, scope='test')
-#         return train_set, None, test_set  # train/val/test
-
-
-
-class MyCharadesProcessor:
+class Processor:
     def __init__(self):
-        super(MyCharadesProcessor, self).__init__()
+        super(Processor, self).__init__()
         self.idx_counter = 0
 
     def reset_idx_counter(self):
@@ -60,16 +19,15 @@ class MyCharadesProcessor:
 
     def process_data(self, data, scope):
         results = []
-        for vid, data_item in tqdm(data.items(), total=len(data), desc='process mycharades {}'.format(scope)):
-            duration = float(data_item['duration'])
-            for timestamp, sentence, ori_timestamp, in zip(data_item["timestamps"], data_item["sentences"], data_item["original_timestamps"]):
-                start_time = max(0.0, float(timestamp[0]))
-                end_time = min(float(timestamp[1]), duration)
-                words = word_tokenize(sentence.strip().lower(), language="english")
-                record = {'sample_id': self.idx_counter, 'vid': str(vid), 's_time': start_time, 'e_time': end_time,
-                          'duration': duration, 'words': words, 'ori_timestamp': ori_timestamp, 'sentence': sentence}
-                results.append(record)
-                self.idx_counter += 1
+        for record in tqdm(data, total=len(data), desc='process data {}'.format(scope)):
+            vid, duration, gt_label, sentence = record[:4]
+            start_time, end_time = gt_label
+            words = word_tokenize(sentence.strip().lower(), language="english")
+
+            record = {'sample_id': self.idx_counter, 'vid': str(vid), 's_time': start_time, 'e_time': end_time,
+                    'duration': duration, 'words': words}
+            results.append(record)
+            self.idx_counter += 1
         return results
 
     def convert(self, data_dir):
@@ -78,90 +36,12 @@ class MyCharadesProcessor:
             raise ValueError('data dir {} does not exist'.format(data_dir))
         # load raw data
         train_data = load_json(os.path.join(data_dir, 'train.json'))
-        val_data = load_json(os.path.join(data_dir, 'val_2.json'))
-        test_data = load_json(os.path.join(data_dir, 'val_1.json'))
-        # process data
-        train_set = self.process_data(train_data, scope='train')
-        val_set = self.process_data(val_data, scope='val')
-        test_set = self.process_data(test_data, scope='test')
-        return train_set, val_set, test_set
-
-
-class ActivityNetProcessor:
-    def __init__(self):
-        super(ActivityNetProcessor, self).__init__()
-        self.idx_counter = 0
-
-    def reset_idx_counter(self):
-        self.idx_counter = 0
-
-    def process_data(self, data, scope):
-        results = []
-        for vid, data_item in tqdm(data.items(), total=len(data), desc='process activitynet {}'.format(scope)):
-            duration = float(data_item['duration'])
-            for timestamp, sentence, ori_timestamp, in zip(data_item["timestamps"], data_item["sentences"], data_item["original_timestamps"]):
-                start_time = max(0.0, float(timestamp[0]))
-                end_time = min(float(timestamp[1]), duration)
-                words = word_tokenize(sentence.strip().lower(), language="english")
-                record = {'sample_id': self.idx_counter, 'vid': str(vid), 's_time': start_time, 'e_time': end_time,
-                          'duration': duration, 'words': words, 'ori_timestamp': ori_timestamp, 'sentence': sentence}
-                results.append(record)
-                self.idx_counter += 1
-        return results
-
-    def convert(self, data_dir):
-        self.reset_idx_counter()
-        if not os.path.exists(data_dir):
-            raise ValueError('data dir {} does not exist'.format(data_dir))
-        # load raw data
-        train_data = load_json(os.path.join(data_dir, 'train.json'))
-        val_data = load_json(os.path.join(data_dir, 'val_2.json'))
-        test_data = load_json(os.path.join(data_dir, 'val_1.json'))
-        # process data
-        train_set = self.process_data(train_data, scope='train')
-        val_set = self.process_data(val_data, scope='val')
-        test_set = self.process_data(test_data, scope='test')
-        return train_set, val_set, test_set
-
-
-class TACoSProcessor:
-    def __init__(self):
-        super(TACoSProcessor, self).__init__()
-        self.idx_counter = 0
-
-    def reset_idx_counter(self):
-        self.idx_counter = 0
-
-    def process_data_tan(self, data, scope):
-        results = []
-        for vid, data_item in tqdm(data.items(), total=len(data), desc='process tacos {}'.format(scope)):
-            if vid.endswith('.avi'):
-                vid = vid[0:-4]
-            fps = float(data_item['fps'])
-            duration = float(data_item['num_frames']) / fps
-            for timestamp, sentence, ori_timestamp, in zip(data_item['timestamps'], data_item['sentences'],  data_item["original_timestamps"]):
-                start_time = max(0.0, float(timestamp[0]) / fps)
-                end_time = min(float(timestamp[1]) / fps, duration)
-                words = word_tokenize(sentence.strip().lower(), language="english")
-                record = {'sample_id': self.idx_counter, 'vid': str(vid), 's_time': start_time, 'e_time': end_time,
-                          'duration': duration, 'words': words, 'ori_timestamp': ori_timestamp, 'sentence': sentence}
-                results.append(record)
-                self.idx_counter += 1
-        return results
-
-    def convert(self, data_dir):
-        self.reset_idx_counter()
-        if not os.path.exists(data_dir):
-            raise ValueError('data dir {} does not exist'.format(data_dir))
-        # load raw data
-        train_data = load_json(os.path.join(data_dir, 'train.json'))
-        val_data = load_json(os.path.join(data_dir, 'val.json'))
         test_data = load_json(os.path.join(data_dir, 'test.json'))
+
         # process data
-        train_set = self.process_data_tan(train_data, scope='train')
-        val_set = self.process_data_tan(val_data, scope='val')
-        test_set = self.process_data_tan(test_data, scope='test')
-        return train_set, val_set, test_set
+        train_set = self.process_data(train_data, scope='train')
+        test_set = self.process_data(test_data, scope='test')
+        return train_set, None, test_set  # train/val/test
 
 
 def load_glove(glove_path):
@@ -210,8 +90,8 @@ def vocab_emb_gen(datasets, emb_path):
     word_vocab = [PAD, UNK] + word_vocab
     word_dict = dict([(word, idx) for idx, word in enumerate(word_vocab)])
     # generate character dict
-    # char_vocab = [PAD, UNK] + [char for char, count in char_counter.most_common() if count >= 5]
-    # char_dict = dict([(char, idx) for idx, char in enumerate(char_vocab)])
+    char_vocab = [PAD, UNK] + [char for char, count in char_counter.most_common() if count >= 5]
+    char_dict = dict([(char, idx) for idx, char in enumerate(char_vocab)])
 
     
     # charades
@@ -228,11 +108,11 @@ def vocab_emb_gen(datasets, emb_path):
     #     ':': 44, '/': 45, '!': 46, '&': 47, ')': 48, '(': 49, '?': 50, '#': 51, 'é': 52, '’': 53, ';': 54, '@': 55}
 
     # tacos
-    char_dict = {'<PAD>': 0, '<UNK>': 1, 'e': 2, 't': 3, 'o': 4, 's': 5, 'h': 6, 'a': 7, 'n': 8, 'r': 9, 'i': 10,
-                'p': 11, 'l': 12, 'd': 13, 'c': 14, 'u': 15, 'f': 16, '.': 17, 'g': 18, 'w': 19, 'm': 20,
-                'k': 21, 'b': 22, 'v': 23, 'y': 24, ',': 25, 'j': 26, 'x': 27, 'q': 28, 'z': 29, '-': 30,
-                "'": 31, '2': 32, '/': 33, '1': 34, '(': 35, ')': 36, '4': 37, '?': 38, ':': 39, '`': 40,
-                '3': 41, '!': 42, ';': 43, '#': 44}
+    # char_dict = {'<PAD>': 0, '<UNK>': 1, 'e': 2, 't': 3, 'o': 4, 's': 5, 'h': 6, 'a': 7, 'n': 8, 'r': 9, 'i': 10,
+    #             'p': 11, 'l': 12, 'd': 13, 'c': 14, 'u': 15, 'f': 16, '.': 17, 'g': 18, 'w': 19, 'm': 20,
+    #             'k': 21, 'b': 22, 'v': 23, 'y': 24, ',': 25, 'j': 26, 'x': 27, 'q': 28, 'z': 29, '-': 30,
+    #             "'": 31, '2': 32, '/': 33, '1': 34, '(': 35, ')': 36, '4': 37, '?': 38, ':': 39, '`': 40,
+    #             '3': 41, '!': 42, ';': 43, '#': 44}
 
     return word_dict, char_dict, vectors
 
@@ -253,7 +133,7 @@ def dataset_gen(data, vfeat_lens, word_dict, char_dict, max_pos_len, scope):
         result = {'sample_id': record['sample_id'], 'vid': record['vid'], 's_time': record['s_time'],
                   'e_time': record['e_time'], 'duration': record['duration'], 'words': record['words'],
                   's_ind': int(s_ind), 'e_ind': int(e_ind), 'v_len': vfeat_lens[vid], 'w_ids': word_ids,
-                  'c_ids': char_ids, 'ori_timestamp': record['ori_timestamp'], 'sentence': record['sentence']}
+                  'c_ids': char_ids}
         dataset.append(result)
     return dataset
 
@@ -262,38 +142,28 @@ def gen_or_load_dataset(configs):
     if not os.path.exists(configs.save_dir):
         os.makedirs(configs.save_dir)
     
-    if configs.suffix is not None:
-        data_dir = os.path.join('data', 'dataset', configs.task + "_" + configs.suffix)
-    else:
-        data_dir = os.path.join('data', 'dataset', configs.task)
+    data_dir = os.path.join('data', configs.task + "_" + configs.suffix)
+    feature_dir = configs.feature_dir
 
-    # feature_dir = os.path.join('data', 'features', configs.task, configs.fv)
-    feature_dir = "/storage_fast/rjliang/tacos/c3d_1024"
+
     if configs.suffix is None:
-        save_path = os.path.join(configs.save_dir, '_'.join([configs.task, configs.fv, str(configs.max_pos_len)]) +
+        save_path = os.path.join(configs.save_dir, '_'.join([configs.task, str(configs.max_pos_len)]) +
                                  '.pkl')
     else:
-        save_path = os.path.join(configs.save_dir, '_'.join([configs.task, configs.fv, str(configs.max_pos_len),
+        save_path = os.path.join(configs.save_dir, '_'.join([configs.task, str(configs.max_pos_len),
                                                              configs.suffix]) + '.pkl')
     if os.path.exists(save_path):
         dataset = load_pickle(save_path)
         return dataset
     feat_len_path = os.path.join(feature_dir, 'feature_shapes.json')
-    # emb_path = os.path.join('data', 'features', 'glove.840B.300d.txt')
-    emb_path = "/storage_fast/rjliang/glove/glove.840B.300d.txt"
+    emb_path = configs.emb_path 
     # load video feature length
     vfeat_lens = load_json(feat_len_path)
     for vid, vfeat_len in vfeat_lens.items():
         vfeat_lens[vid] = min(configs.max_pos_len, vfeat_len)
     # load data
-    if configs.task == 'charades':
-        processor = MyCharadesProcessor()
-    elif configs.task == 'activitynet':
-        processor = ActivityNetProcessor()
-    elif configs.task == 'tacos':
-        processor = TACoSProcessor()
-    else:
-        raise ValueError('Unknown task {}!!!'.format(configs.task))
+    processor = Processor()
+    
     train_data, val_data, test_data = processor.convert(data_dir)
     # generate dataset
     data_list = [train_data, test_data] if val_data is None else [train_data, val_data, test_data]

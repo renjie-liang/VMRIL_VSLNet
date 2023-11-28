@@ -5,6 +5,7 @@ __pycache__/
 
 data
 results
+datapkl
 figures/
 # C extensions
 *.so
